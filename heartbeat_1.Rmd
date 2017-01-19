@@ -1,0 +1,224 @@
+---
+title: "heartbeat data alanysis - 1"
+author: "km"
+date: "`r format(Sys.time(), '%Y/%m/%d')`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_section: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# library activation
+```{r, warning=F, error=F, message=F}
+library("seewave")    # spectro, timer, specprop
+library("tuneR")      # raedMP3, writeWave
+library("dplyr")      # dataframe handling
+library("ggplot2")    # make plot
+```
+
+# dataset
+HeartSound & Murmur Library @ Univ. Michigan (.mp3)  
+http://www.med.umich.edu/lrc/psb_open/html/repo/primer_heartsound/primer_heartsound.html
+
+## inport data
+
+
+```{r}
+# file list in data folder
+A <- list.files("Michigan_Heart_Sounds")
+
+k <- 1
+A[k]
+
+# read file
+dat <- readMP3(paste("Michigan_Heart_Sounds/", A[k], sep=""))
+
+# data structure
+str(dat)
+```
+
+# in partial data (first 1.6sec)
+```{r, fig.width=8, fig.height=3}
+start <- 0 * dat@samp.rate
+end <- 1.6 * dat@samp.rate
+
+dat1 <- dat[start:end]
+
+# amplitude
+par(mar = c(3, 5, 0.5, 0.5), tcl = -0.2, mgp = c(1.5, 0.3, 0))
+plot(dat1)
+
+# spectrogram
+spectro(dat1, 
+        collevels = seq(-50, 0, length=20),  # dB range
+        palette = reverse.gray.colors.1,     # color palette
+        flim = c(0, 1))                      # kHz range
+```
+
+## start & end timing of the signals
+- the function `timer` in {seewave} package computes and shows the duration of signal periods, pause periods and their ratio.  
+- see detail: `help(timer)`
+```{r, fig.width=8, fig.height=3}
+# cutoff: 4.5% of signal
+threshold <- 4.5
+
+par(mar = c(3, 3, 0.5, 0.5), tcl = -0.2, mgp = c(1.5, 0.3, 0))
+dat_hb <- timer(dat1, threshold = threshold, msmooth = c(50, 0))
+
+# data structure
+str(dat_hb)
+```
+```{r, fig.width=8, fig.height=3, echo=F}
+par(mar = c(1.5, 1.5, 1, 0.5), tcl = -0.2, mgp = c(1.5, 0.3, 0))
+hist(dat_hb$p,breaks = 50, main = "histgram of silent dulation: dat_hb$p")
+```
+  
+## start and end timing of signals
+```{r, fig.width=8, fig.height=3}
+# ignor first and last silence
+dat_hb$p[1] <- dat_hb$p[1]+1
+dat_hb$p[length(dat_hb$p)] <- dat_hb$p[length(dat_hb$p)]+1
+
+# ignor silent dulation < 0.275 sec
+threshold_silent <- 0.275
+a <- c(1:length(dat_hb$p))[dat_hb$p > threshold_silent]
+
+# start and end timing of signals
+list_start <- dat_hb$s.start[a]
+list_end <- dat_hb$s.end[a-1]
+
+```
+
+## plot: signal timing
+```{r, fig.width=8, fig.height=3, echo=T}
+x <- 1:length(dat1@left)/dat@samp.rate
+y <- x
+
+# cutin
+for(ii in 1:length(list_end)){
+  y[y >= list_start[ii] & y <= list_end[ii]] <- 100
+}
+# cutoff
+y[y < 100] <- 0
+
+# plot
+par(mar = c(3, 3, 0.5, 0.5), tcl = -0.2, mgp = c(1.5, 0.3, 0))
+plot(x, y, type = "l", col = "Red", yaxt = "n")
+par(new = T)
+plot(dat1)
+```
+
+- first signal  
+```{r, fig.width=6, fig.height=8, out.width=200, echo=F}
+List <- list.files(paste("wav/", A[1], sep=""))
+dati <- readWave(paste("wav/", A[1], "/", List[1], sep=""))
+
+par(mar = c(1.5, 1, 0.5, 0.5), tcl = -0.2, mgp = c(1.5, 0.3, 0))
+spectro(dati, 
+        collevels = seq(-50, 0, length=20),  # dB range
+        palette = reverse.gray.colors.1,     # color palette
+        flim = c(0, 1), scale =F, osc =T)                      # kHz range
+```
+- 2nd signal  
+```{r, fig.width=6, fig.height=8, out.width=200, echo=F}
+List <- list.files(paste("wav/", A[1], sep=""))
+dati <- readWave(paste("wav/", A[1], "/", List[2], sep=""))
+
+par(mar = c(1.5, 1, 0.5, 0.5), tcl = -0.2, mgp = c(1.5, 0.3, 0))
+spectro(dati, 
+        collevels = seq(-50, 0, length=20),  # dB range
+        palette = reverse.gray.colors.1,     # color palette
+        flim = c(0, 1), scale =F, osc =T)                      # kHz range
+```
+
+
+# in whole data
+## signal timing
+```{r, fig.width=6, fig.height=3, warning=F}
+# Whole data
+dat_hb <- timer(dat, threshold = threshold, msmooth = c(50, 0), plot=F)
+
+dat_hb$p[1] <- dat_hb$p[1]+1
+dat_hb$p[length(dat_hb$p)] <- dat_hb$p[length(dat_hb$p)]+1
+
+a <- c(1:length(dat_hb$p))[dat_hb$p > threshold_silent]
+
+# start and end timing of signals
+list_start <- dat_hb$s.start[a] * dat@samp.rate
+list_end <- dat_hb$s.end[a-1] * dat@samp.rate
+```
+
+## split data
+```{r, fig.width=6, fig.height=3, warning=F}
+# make folder
+ dir.create(paste("wav/", A[k], sep=""))
+
+# calcurate parameters and save .wav of each signal
+spec_call <- NULL
+for(i in 1:length(list_end)){
+  dat_i <- dat[list_start[i]:list_end[i]]
+  
+  spec_dat <- specprop(spec(dat_i, f = dat_i@samp.rate, plot =F))
+  spec_dat$dulation <- length(dat_i@left)/dat_i@samp.rate
+  spec_call[[i]] <- spec_dat
+ writeWave(dat_i, paste("wav/", A[k], "/", i, "_",
+                        substr(A[k],1, nchar(A[k])-3), "wav",sep=""))
+}
+```
+## collect parameters 
+- see detail: `help(specprop)`
+
+parameters||
+----|----|
+mean|mean frequency (see mean)|
+sd|  standard deviation of the mean (see sd)|
+sem|  standard error of the mean|
+median|  median frequency (see median)|
+mode|  mode frequency, i.e. the dominant frequency|
+Q25|  first quartile (see quantile)|
+Q75|  third quartile (see quantile)|
+IQR|  interquartile range (see IQR)|
+cent|  centroid, see note|
+skewness|  skewness, a measure of asymmetry, see note|
+kurtosis|  kurtosis, a measure of peakedness, see note|
+sfm|  spectral flatness measure (see sfm)|
+sh|  spectral entropy (see sh)|
+prec|  frequency precision of the spectrum|
+
+
+```{r, fig.width=6, fig.height=3, warning=F, echo=F}
+spec_summary <- data.frame(
+  mean = sapply(spec_call, "[[", "mean"),
+  sd = sapply(spec_call, "[[", "sd"),
+  median = sapply(spec_call, "[[", "median"),
+  sem = sapply(spec_call, "[[", "sem"),
+  mode = sapply(spec_call, "[[", "mode"),
+  Q25 = sapply(spec_call, "[[", "Q25"),
+  Q75 = sapply(spec_call, "[[", "Q75"),
+  IQR = sapply(spec_call, "[[", "IQR"),
+  cent = sapply(spec_call, "[[", "cent"),
+  skewness = sapply(spec_call, "[[", "skewness"),
+  kurtosis = sapply(spec_call, "[[", "kurtosis"),
+  sfm = sapply(spec_call, "[[", "sfm"),
+  sh = sapply(spec_call, "[[", "sh"),
+  prec = sapply(spec_call, "[[", "prec"),
+  dulation = sapply(spec_call, "[[", "dulation")
+)
+```
+
+## plot: distributions of heart beat signal parameters
+- each point reprezent each signal in one .wav file
+```{r, fig.width=8, fig.height=8, echo = F}
+plot(spec_summary[,c("mean", "sd", "mode", "kurtosis",
+                     "sfm", "sh", "dulation")], pch =20, cex =0.2)
+```
+
+# session information
+```{r}
+sessionInfo()
+```
